@@ -79,10 +79,8 @@ def _float_feature(value):
 
 def _to_sequence_example(image, caption, vocab):
     context = tf.train.Features(feature={
-        "image/dims":
-        _int64_feature(list(image.shape)),
-        "image/data":
-        _float_feature(image[:]),
+        "image/dims": _int64_feature(list(image.shape)),
+        "image/data": _float_feature(image[:]),
         "image/caption_ids":
         _int64_feature([vocab[word] for word in caption]),
     })
@@ -140,11 +138,11 @@ def _process_image_files(thread_index, ranges, name, images, img_captions,
                            num_images_in_thread))
                     sys.stdout.flush()
         writer.close()
-        print("%s [thread %d]: Wrote %d image-captions pairs to %s" %
+        print("%s [thread %d]: Wrote %d image-caption pairs to %s" %
               (datetime.now(), thread_index, shard_counter, output_file))
         sys.stdout.flush()
         shard_counter = 0
-    print("%s [thread %d]: Wrote %d image-captions pairs to %d shards." %
+    print("%s [thread %d]: Wrote %d image-caption pairs to %d shards." %
           (datetime.now(), thread_index, counter, num_shards_per_batch))
     sys.stdout.flush()
 
