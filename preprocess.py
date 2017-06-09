@@ -47,7 +47,6 @@ tf.flags.DEFINE_string("word_counts_output_file", "word_counts.txt",
 tf.flags.DEFINE_integer("num_threads", 4,
                         "Number of threads to preprocess the images.")
 
-
 FLAGS = tf.flags.FLAGS
 
 tk = MosesTokenizer()
@@ -122,8 +121,7 @@ def _process_image_files(thread_index, ranges, name, images, img_captions,
                 captions = [[]]
 
             for caption in captions:
-                sequence_example = _to_sequence_example(image, caption,
-                                                        vocab)
+                sequence_example = _to_sequence_example(image, caption, vocab)
                 if sequence_example is None:
                     continue
                 writer.write(sequence_example.SerializeToString())
@@ -131,10 +129,9 @@ def _process_image_files(thread_index, ranges, name, images, img_captions,
                 counter += 1
 
                 if not counter % 500:
-                    print(
-                        ("%s [thread %d]: Processed %d of %d"
-                         " items in thread batch.")
-                        % (datetime.now(), thread_index, counter,
+                    print(("%s [thread %d]: Processed %d of %d"
+                           " items in thread batch.") %
+                          (datetime.now(), thread_index, counter,
                            num_images_in_thread))
                     sys.stdout.flush()
         writer.close()
