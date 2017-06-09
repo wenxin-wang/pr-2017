@@ -5,13 +5,14 @@ from __future__ import print_function
 from nltk.tokenize.moses import MosesTokenizer
 from collections import Counter, defaultdict
 
+import numpy as np
 import h5py
 from datetime import datetime
 import os.path
 import sys
+import threading
 
 import tensorflow as tf
-
 
 tf.flags.DEFINE_string("image_ft1_file", "../data/image_vgg19_fc1_feature.h5",
                        "Training image directory.")
@@ -28,6 +29,13 @@ tf.flags.DEFINE_string("val_captions_file", "../data/valid.txt",
 
 tf.flags.DEFINE_string("output_dir", "../data/records",
                        "Output data directory.")
+
+tf.flags.DEFINE_integer("train_shards", 256,
+                        "Number of shards in training TFRecord files.")
+tf.flags.DEFINE_integer("val_shards", 32,
+                        "Number of shards in validation TFRecord files.")
+tf.flags.DEFINE_integer("test_shards", 32,
+                        "Number of shards in testing TFRecord files.")
 
 tf.flags.DEFINE_string("start_word", "<S>",
                        "Special word added to the beginning of each sentence.")
@@ -50,58 +58,110 @@ tk = MosesTokenizer()
 
 def _int64_feature(value):
     """Wrapper for inserting an int64 Feature into a SequenceExample proto."""
-    return tf.train.Feature(int64_list=tf.train.Int64List(value=[value]))
+    if type(value) is not list:
+        value = [value]
+    return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
 
 
-def _int64_feature_list(values):
-    """Wrapper for inserting an int64 FeatureList into a SequenceExample proto.
-    """
-    return tf.train.FeatureList(feature=[_int64_feature(v) for v in values])
-
-
-def _to_sequence_example(img_id, caption, vocab):
+def _to_sequence_example(image, caption, vocab):
     context = tf.train.Features(feature={
-        "image/image_id":
-        _int64_feature(img_id)
-    })
-
-    caption_ids = [vocab[word] for word in caption]
-    feature_lists = tf.train.FeatureLists(feature_list={
+        "image/dims":
+        _int64_feature(list(image.shape)),
+        "image/data":
+        _int64_feature(image[:]),
         "image/caption_ids":
-        _int64_feature_list(caption_ids)
+        _int64_feature([vocab[word] for word in caption]),
     })
-    sequence_example = tf.train.SequenceExample(
-        context=context, feature_lists=feature_lists)
-
+    sequence_example = tf.train.SequenceExample(context=context)
     return sequence_example
 
 
-def _process_caption_files(name, img_captions, vocab):
-    output_filename = "%s-captions.tfr"
-    output_file = os.path.join(FLAGS.output_dir, output_filename)
-    writer = tf.python_io.TFRecordWriter(output_file)
+def _process_image_files(thread_index, ranges, name, images, img_captions,
+                         vocab, num_shards):
+    # Each thread produces N shards where N = num_shards / num_threads. For
+    # instance, if num_shards = 128, and num_threads = 2, then the first thread
+    # would produce shards [0, 64).
+    num_threads = len(ranges)
+    assert not num_shards % num_threads
+    num_shards_per_batch = int(num_shards / num_threads)
+
+    shard_ranges = np.linspace(ranges[thread_index][0],
+                               ranges[thread_index][1],
+                               num_shards_per_batch + 1).astype(int)
+    num_images_in_thread = ranges[thread_index][1] - ranges[thread_index][0]
+
     counter = 0
-    for img_id, captions in img_captions:
-        for caption in captions:
-            sequence_example = _to_sequence_example(img_id, caption, vocab)
-            if sequence_example is not None:
+    for s in range(num_shards_per_batch):
+        # Generate a sharded version of the file name,
+        # e.g. 'train-00002-of-00010'
+        shard = thread_index * num_shards_per_batch + s
+        output_filename = "%s-%.5d-of-%.5d" % (name, shard, num_shards)
+        output_file = os.path.join(FLAGS.output_dir, output_filename)
+        writer = tf.python_io.TFRecordWriter(output_file)
+
+        shard_counter = 0
+        images_in_shard = np.arange(
+            shard_ranges[s], shard_ranges[s + 1], dtype=int)
+        for i in images_in_shard:
+            image = images[i]
+            if img_captions:
+                captions = img_captions[i]
+            else:
+                captions = []
+
+            for caption in captions:
+                sequence_example = _to_sequence_example(image, caption,
+                                                        vocab)
+                if sequence_example is None:
+                    continue
                 writer.write(sequence_example.SerializeToString())
+                shard_counter += 1
                 counter += 1
 
-            if not counter % 1000:
-                print("%s :Processed %d captoins." % (datetime.now(),
-                                                            counter))
-                sys.stdout.flush()
-
-    writer.close()
-    print("%s : Wrote %d captions to %s" % (datetime.now(), counter,
-                                            output_file))
+                if not counter % 1000:
+                    print(
+                        ("%s [thread %d]: Processed %d of %d"
+                         " items in thread batch.")
+                        % (datetime.now(), thread_index, counter,
+                           num_images_in_thread))
+                    sys.stdout.flush()
+        writer.close()
+        print("%s [thread %d]: Wrote %d image-caption pairs to %s" %
+              (datetime.now(), thread_index, shard_counter, output_file))
+        sys.stdout.flush()
+        shard_counter = 0
+    print("%s [thread %d]: Wrote %d image-caption pairs to %d shards." %
+          (datetime.now(), thread_index, counter, num_shards_per_batch))
     sys.stdout.flush()
 
 
-def _process_dataset(name, images, img_captions, vocab):
-    for image, (_, captions) in zip(images, img_captions):
-        pass
+def _process_dataset(name, images, img_captions, vocab, num_shards):
+    # Break the images into num_threads batches. Batch i is defined as
+    # images[ranges[i][0]:ranges[i][1]].
+    num_threads = min(num_shards, FLAGS.num_threads)
+    spacing = np.linspace(0, len(images), num_threads + 1).astype(np.int)
+    ranges = []
+    threads = []
+    for i in range(len(spacing) - 1):
+        ranges.append([spacing[i], spacing[i + 1]])
+
+    # Create a mechanism for monitoring when all threads are finished.
+    coord = tf.train.Coordinator()
+
+    # Launch a thread for each batch.
+    print("Launching %d threads for spacings: %s" % (num_threads, ranges))
+    for thread_index in range(len(ranges)):
+        args = (thread_index, ranges, name, images, img_captions, vocab,
+                num_shards)
+        t = threading.Thread(target=_process_image_files, args=args)
+        t.start()
+        threads.append(t)
+
+    # Wait for all the threads to terminate.
+    coord.join(threads)
+    print(
+        "%s: Finished processing all %d image-caption pairs in data set '%s'."
+        % (datetime.now(), len(images), name))
 
 
 def _create_vocab(img_captions):
@@ -151,9 +211,9 @@ def _read_captions(ifname):
         for line in f:
             line = line.rstrip('\n')
             try:
-                i = int(line)
+                int(line)
                 img_caps = []
-                caps.append((i, img_caps))
+                caps.append(img_caps)
             except ValueError:
                 img_caps.append(_process_caption(line))
     return caps
@@ -178,12 +238,12 @@ def main(unused_argv):
 
     # Create vocabulary from the training captions.
     vocab = _create_vocab(trn_caps)
-    _process_caption_files("trn", trn_caps, vocab)
-    _process_caption_files("val", val_caps, vocab)
 
-    #trn_set, val_set, tst_set = _read_ft_file(FLAGS.image_ft_file)
+    trn_set, val_set, tst_set = _read_ft_file(FLAGS.image_ft_file)
 
-    #_process_dataset("trn", trn_set, trn_caps, vocab, FLAGS.train_shards)
+    _process_dataset("trn", trn_set, trn_caps, vocab, FLAGS.train_shards)
+    _process_dataset("val", val_set, val_caps, vocab, FLAGS.val_shards)
+    _process_dataset("tst", tst_set, None, vocab, FLAGS.test_shards)
 
 
 if __name__ == "__main__":
