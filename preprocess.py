@@ -14,14 +14,8 @@ import threading
 
 import tensorflow as tf
 
-tf.flags.DEFINE_string("image_ft1_file", "../data/image_vgg19_fc1_feature.h5",
+tf.flags.DEFINE_string("image_ft_file", "../data/image_vgg19_fc1_feature.h5",
                        "Training image directory.")
-tf.flags.DEFINE_string("image_ft2_file", "../data/image_vgg19_fc2_feature.h5",
-                       "Training image directory.")
-tf.flags.DEFINE_string("image_cnn_file",
-                       "../data/image_vgg19_block5_pool_feature.h5",
-                       "Training image directory.")
-
 tf.flags.DEFINE_string("train_captions_file", "../data/train.txt",
                        "Training captions file.")
 tf.flags.DEFINE_string("val_captions_file", "../data/valid.txt",
@@ -30,11 +24,11 @@ tf.flags.DEFINE_string("val_captions_file", "../data/valid.txt",
 tf.flags.DEFINE_string("output_dir", "../data/records",
                        "Output data directory.")
 
-tf.flags.DEFINE_integer("train_shards", 256,
+tf.flags.DEFINE_integer("train_shards", 16,
                         "Number of shards in training TFRecord files.")
-tf.flags.DEFINE_integer("val_shards", 32,
+tf.flags.DEFINE_integer("val_shards", 2,
                         "Number of shards in validation TFRecord files.")
-tf.flags.DEFINE_integer("test_shards", 32,
+tf.flags.DEFINE_integer("test_shards", 2,
                         "Number of shards in testing TFRecord files.")
 
 tf.flags.DEFINE_string("start_word", "<S>",
@@ -47,20 +41,40 @@ tf.flags.DEFINE_integer(
     "min_word_count", 4,
     "The minimum number of occurrences of each word in the "
     "training set for inclusion in the vocabulary.")
-tf.flags.DEFINE_string("word_counts_output_file",
-                       "../data/records/word_counts.txt",
+tf.flags.DEFINE_string("word_counts_output_file", "word_counts.txt",
                        "Output vocabulary file of word counts.")
+
+tf.flags.DEFINE_integer("num_threads", 4,
+                        "Number of threads to preprocess the images.")
+
 
 FLAGS = tf.flags.FLAGS
 
 tk = MosesTokenizer()
 
 
+def _ensure_list(value):
+    if type(value) is tuple:
+        return list(value)
+    elif type(value) is np.ndarray:
+        return value.tolist()
+    elif type(value) is not list:
+        value = [value]
+    elif not value:
+        value = []
+    return value
+
+
 def _int64_feature(value):
     """Wrapper for inserting an int64 Feature into a SequenceExample proto."""
-    if type(value) is not list:
-        value = [value]
+    value = _ensure_list(value)
     return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
+
+
+def _float_feature(value):
+    """Wrapper for inserting an int64 Feature into a SequenceExample proto."""
+    value = _ensure_list(value)
+    return tf.train.Feature(float_list=tf.train.FloatList(value=value))
 
 
 def _to_sequence_example(image, caption, vocab):
@@ -68,7 +82,7 @@ def _to_sequence_example(image, caption, vocab):
         "image/dims":
         _int64_feature(list(image.shape)),
         "image/data":
-        _int64_feature(image[:]),
+        _float_feature(image[:]),
         "image/caption_ids":
         _int64_feature([vocab[word] for word in caption]),
     })
@@ -107,7 +121,7 @@ def _process_image_files(thread_index, ranges, name, images, img_captions,
             if img_captions:
                 captions = img_captions[i]
             else:
-                captions = []
+                captions = [[]]
 
             for caption in captions:
                 sequence_example = _to_sequence_example(image, caption,
@@ -118,7 +132,7 @@ def _process_image_files(thread_index, ranges, name, images, img_captions,
                 shard_counter += 1
                 counter += 1
 
-                if not counter % 1000:
+                if not counter % 500:
                     print(
                         ("%s [thread %d]: Processed %d of %d"
                          " items in thread batch.")
@@ -126,11 +140,11 @@ def _process_image_files(thread_index, ranges, name, images, img_captions,
                            num_images_in_thread))
                     sys.stdout.flush()
         writer.close()
-        print("%s [thread %d]: Wrote %d image-caption pairs to %s" %
+        print("%s [thread %d]: Wrote %d image-captions pairs to %s" %
               (datetime.now(), thread_index, shard_counter, output_file))
         sys.stdout.flush()
         shard_counter = 0
-    print("%s [thread %d]: Wrote %d image-caption pairs to %d shards." %
+    print("%s [thread %d]: Wrote %d image-captions pairs to %d shards." %
           (datetime.now(), thread_index, counter, num_shards_per_batch))
     sys.stdout.flush()
 
@@ -160,14 +174,14 @@ def _process_dataset(name, images, img_captions, vocab, num_shards):
     # Wait for all the threads to terminate.
     coord.join(threads)
     print(
-        "%s: Finished processing all %d image-caption pairs in data set '%s'."
+        "%s: Finished processing all %d image-captions pairs in data set '%s'."
         % (datetime.now(), len(images), name))
 
 
 def _create_vocab(img_captions):
     print("Creating vocabulary.")
     counter = Counter()
-    for _, captions in img_captions:
+    for captions in img_captions:
         for cap in captions:
             counter.update(cap)
     print("Total words:", len(counter))
@@ -178,9 +192,10 @@ def _create_vocab(img_captions):
     print("Words in vocabulary:", len(word_counts))
 
     # Write out the word counts file.
-    with tf.gfile.FastGFile(FLAGS.word_counts_output_file, "w") as f:
+    p = os.path.join(FLAGS.output_dir, FLAGS.word_counts_output_file)
+    with tf.gfile.FastGFile(p, "w") as f:
         f.write("\n".join(["%s %d" % (w, c) for w, c in word_counts]))
-    print("Wrote vocabulary file:", FLAGS.word_counts_output_file)
+    print("Wrote vocabulary file:", p)
 
     unk_id = len(word_counts)
     vocab = defaultdict(lambda: unk_id)
@@ -242,8 +257,8 @@ def main(unused_argv):
     trn_set, val_set, tst_set = _read_ft_file(FLAGS.image_ft_file)
 
     _process_dataset("trn", trn_set, trn_caps, vocab, FLAGS.train_shards)
-    _process_dataset("val", val_set, val_caps, vocab, FLAGS.val_shards)
-    _process_dataset("tst", tst_set, None, vocab, FLAGS.test_shards)
+    #_process_dataset("val", val_set, val_caps, vocab, FLAGS.val_shards)
+    #_process_dataset("tst", tst_set, None, vocab, FLAGS.test_shards)
 
 
 if __name__ == "__main__":
