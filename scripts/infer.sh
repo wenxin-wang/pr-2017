@@ -1,9 +1,12 @@
-DATA_DIR=../data/ft1-c-4
+DATA_DIR=../data/ft1-c-2
 MODEL_DIR=$DATA_DIR/model
+#MODEL_DIR=$DATA_DIR/model/orig-06-10-14-37
 CHECKPOINT_PATH=$MODEL_DIR/train
 RECORDS_DIR=$DATA_DIR/records
 VOCAB_FILE=$RECORDS_DIR/word_counts.txt
 IMAGE_FILE=../data/image_vgg19_fc1_feature.h5
+
+#export CUDA_VISIBLE_DEVICES=""
 
 python run_inference.py \
   --checkpoint_path=${CHECKPOINT_PATH} \

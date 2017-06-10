@@ -1,4 +1,4 @@
-DATA_DIR=../data/ft1-c-4
+DATA_DIR=../data/ft1-c-2
 MODEL_DIR=$DATA_DIR/model
 RECORDS_DIR=$DATA_DIR/records
 

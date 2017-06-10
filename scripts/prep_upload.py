@@ -4,7 +4,7 @@ from pathlib import Path
 
 def main():
     ifname = sys.argv[1]
-    _id = int(sys.argv[2])
+    _id = int(sys.argv[2]) if len(sys.argv) > 2 else 9000
     p = Path(ifname)
     ofname = p.with_name(p.stem + '-upload' + p.suffix)
     with open(ifname) as inf, open(ofname, 'w') as outf:

@@ -78,7 +78,6 @@ def _float_feature(value):
 
 def _to_sequence_example(image, caption, vocab):
     context = tf.train.Features(feature={
-        "image/dims": _int64_feature(list(image.shape)),
         "image/data": _float_feature(image[:]),
         "image/caption_ids":
         _int64_feature([vocab[word] for word in caption]),
