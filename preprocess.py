@@ -252,8 +252,8 @@ def main(unused_argv):
     trn_set, val_set, tst_set = _read_ft_file(FLAGS.image_ft_file)
 
     _process_dataset("trn", trn_set, trn_caps, vocab, FLAGS.train_shards)
-    #_process_dataset("val", val_set, val_caps, vocab, FLAGS.val_shards)
-    #_process_dataset("tst", tst_set, None, vocab, FLAGS.test_shards)
+    _process_dataset("val", val_set, val_caps, vocab, FLAGS.val_shards)
+    # _process_dataset("tst", tst_set, None, vocab, FLAGS.test_shards)
 
 
 if __name__ == "__main__":
