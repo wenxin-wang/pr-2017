@@ -82,10 +82,8 @@ def main(unused_argv):
         train_op = tf.contrib.layers.optimize_loss(
             loss=model.total_loss,
             global_step=model.global_step,
-            learning_rate=learning_rate,
-            optimizer=training_config.optimizer,
-            clip_gradients=training_config.clip_gradients,
-            learning_rate_decay_fn=learning_rate_decay_fn)
+            learning_rate=None,
+            optimizer=tf.train.AdamOptimizer())
 
         # Set up the Saver for saving and restoring model checkpoints.
         saver = tf.train.Saver(

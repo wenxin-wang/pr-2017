@@ -29,9 +29,6 @@ class ModelConfig(object):
         # Must be provided in training and evaluation modes.
         self.input_file_pattern = None
 
-        # Image format ("jpeg" or "png").
-        self.image_format = "jpeg"
-
         self.ft_len = 4096
         self.ft_shape = [4096]
 
@@ -74,9 +71,6 @@ class TrainingConfig(object):
         """Sets the default training hyperparameters."""
         # Number of examples per epoch of training data.
         self.num_examples_per_epoch = 586363
-
-        # Optimizer for training the model.
-        self.optimizer = "SGD"
 
         # Learning rate for the initial phase of training.
         self.initial_learning_rate = 2.0
