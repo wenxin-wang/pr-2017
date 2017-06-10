@@ -48,7 +48,7 @@ class ModelConfig(object):
         # for differences between tokenizer versions used in preprocessing. There is
         # no harm in using a value greater than the actual vocab size, but using a
         # value less than the actual vocab size will result in an error.
-        self.vocab_size = 12000
+        self.vocab_size = 2000
 
         # Number of threads for image preprocessing. Should be a multiple of 2.
         self.num_preprocess_threads = 4
@@ -56,21 +56,12 @@ class ModelConfig(object):
         # Batch size.
         self.batch_size = 32
 
-        # File containing an Inception v3 checkpoint to initialize the variables
-        # of the Inception model. Must be provided when starting training for the
-        # first time.
-        self.inception_checkpoint_file = None
-
-        # Dimensions of Inception v3 input images.
-        self.image_height = 299
-        self.image_width = 299
-
         # Scale used to initialize model variables.
         self.initializer_scale = 0.08
 
         # LSTM input and output dimensionality, respectively.
-        self.embedding_size = 512
-        self.num_lstm_units = 512
+        self.embedding_size = self.ft_len
+        self.num_lstm_units = self.ft_len
 
         # If < 1.0, the dropout keep probability applied to LSTM variables.
         self.lstm_dropout_keep_prob = 0.7

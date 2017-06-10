@@ -24,8 +24,6 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from ops import image_embedding
-from ops import image_processing
 from ops import inputs as input_ops
 
 
@@ -36,19 +34,16 @@ class ShowAndTellModel(object):
     Oriol Vinyals, Alexander Toshev, Samy Bengio, Dumitru Erhan
     """
 
-    def __init__(self, config, mode, train_inception=False):
+    def __init__(self, config, mode):
         """Basic setup.
 
         Args:
         config: Object containing configuration parameters.
         mode: "train", "eval" or "inference".
-        train_inception: Whether the inception submodel variables are
-                         trainable.
         """
         assert mode in ["train", "eval", "inference"]
         self.config = config
         self.mode = mode
-        self.train_inception = train_inception
 
         # Reader for the input data.
         self.reader = tf.TFRecordReader()
@@ -86,9 +81,6 @@ class ShowAndTellModel(object):
         # A float32 Tensor with shape [batch_size * padded_length].
         self.target_cross_entropy_loss_weights = None
 
-        # Collection of variables from the inception submodel.
-        self.inception_variables = []
-
         # Function to restore the inception submodel from checkpoint.
         self.init_fn = None
 
@@ -98,25 +90,6 @@ class ShowAndTellModel(object):
     def is_training(self):
         """Returns true if the model is built for training mode."""
         return self.mode == "train"
-
-    def process_image(self, encoded_image, thread_id=0):
-        """Decodes and processes an image string.
-
-    Args:
-      encoded_image: A scalar string Tensor; the encoded image.
-      thread_id: Preprocessing thread id used to select the ordering of color
-        distortions.
-
-    Returns:
-      A float32 Tensor of shape [height, width, 3]; the processed image.
-    """
-        return image_processing.process_image(
-            encoded_image,
-            is_training=self.is_training(),
-            height=self.config.image_height,
-            width=self.config.image_width,
-            thread_id=thread_id,
-            image_format=self.config.image_format)
 
     def build_inputs(self):
         """Input prefetching, preprocessing and batching.
@@ -137,7 +110,7 @@ class ShowAndTellModel(object):
                 name="input_feed")
 
             # Process image and insert batch dimensions.
-            images = tf.expand_dims(self.process_image(image_feed), 0)
+            images = tf.expand_dims(image_feed, 0)
             input_seqs = tf.expand_dims(input_feed, 1)
 
             # No target sequences or input mask in inference mode.
@@ -155,8 +128,6 @@ class ShowAndTellModel(object):
                 input_queue_capacity_factor,
                 num_reader_threads=self.config.num_input_reader_threads)
 
-            # Image processing and random distortion. Split across multiple threads
-            # with each thread applying a slightly different distortion.
             assert self.config.num_preprocess_threads % 2 == 0
             images_and_captions = []
             for thread_id in range(self.config.num_preprocess_threads):
@@ -181,45 +152,17 @@ class ShowAndTellModel(object):
         self.input_mask = input_mask
 
     def build_image_embeddings(self):
-        """Builds the image model subgraph and generates image embeddings.
-
-    Inputs:
-      self.images
-
-    Outputs:
-      self.image_embeddings
-    """
-        inception_output = image_embedding.inception_v3(
-            self.images,
-            trainable=self.train_inception,
-            is_training=self.is_training())
-        self.inception_variables = tf.get_collection(
-            tf.GraphKeys.GLOBAL_VARIABLES, scope="InceptionV3")
-
-        # Map inception output into embedding space.
-        with tf.variable_scope("image_embedding") as scope:
-            image_embeddings = tf.contrib.layers.fully_connected(
-                inputs=inception_output,
-                num_outputs=self.config.embedding_size,
-                activation_fn=None,
-                weights_initializer=self.initializer,
-                biases_initializer=None,
-                scope=scope)
-
-        # Save the embedding size in the graph.
-        tf.constant(self.config.embedding_size, name="embedding_size")
-
-        self.image_embeddings = image_embeddings
+        self.image_embeddings = self.images
 
     def build_seq_embeddings(self):
         """Builds the input sequence embeddings.
 
-    Inputs:
-      self.input_seqs
+        Inputs:
+        self.input_seqs
 
-    Outputs:
-      self.seq_embeddings
-    """
+        Outputs:
+        self.seq_embeddings
+        """
         with tf.variable_scope("seq_embedding"), tf.device("/cpu:0"):
             embedding_map = tf.get_variable(
                 name="map",
@@ -244,9 +187,9 @@ class ShowAndTellModel(object):
       self.target_cross_entropy_losses (training and eval only)
       self.target_cross_entropy_loss_weights (training and eval only)
     """
-        # This LSTM cell has biases and outputs tanh(new_c) * sigmoid(o), but the
-        # modified LSTM in the "Show and Tell" paper has no biases and outputs
-        # new_c * sigmoid(o).
+        # This LSTM cell has biases and outputs tanh(new_c) * sigmoid(o), but
+        # the modified LSTM in the "Show and Tell" paper has no biases and
+        # outputs new_c * sigmoid(o).
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(
             num_units=self.config.num_lstm_units, state_is_tuple=True)
         if self.mode == "train":
@@ -267,8 +210,8 @@ class ShowAndTellModel(object):
             lstm_scope.reuse_variables()
 
             if self.mode == "inference":
-                # In inference mode, use concatenated states for convenient feeding and
-                # fetching.
+                # In inference mode, use concatenated states for convenient
+                # feeding and fetching.
                 tf.concat(axis=1, values=initial_state, name="initial_state")
 
                 # Placeholder for feeding a batch of concatenated states.
@@ -331,22 +274,10 @@ class ShowAndTellModel(object):
                 tf.summary.histogram("parameters/" + var.op.name, var)
 
             self.total_loss = total_loss
-            self.target_cross_entropy_losses = losses  # Used in evaluation.
-            self.target_cross_entropy_loss_weights = weights  # Used in evaluation.
 
-    def setup_inception_initializer(self):
-        """Sets up the function to restore inception variables from checkpoint."""
-        if self.mode != "inference":
-            # Restore inception variables only.
-            saver = tf.train.Saver(self.inception_variables)
-
-            def restore_fn(sess):
-                tf.logging.info(
-                    "Restoring Inception variables from checkpoint file %s",
-                    self.config.inception_checkpoint_file)
-                saver.restore(sess, self.config.inception_checkpoint_file)
-
-            self.init_fn = restore_fn
+            # Used in evaluation.
+            self.target_cross_entropy_losses = losses
+            self.target_cross_entropy_loss_weights = weights
 
     def setup_global_step(self):
         """Sets up the global step Tensor."""
@@ -366,5 +297,4 @@ class ShowAndTellModel(object):
         self.build_image_embeddings()
         self.build_seq_embeddings()
         self.build_model()
-        self.setup_inception_initializer()
         self.setup_global_step()
