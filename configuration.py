@@ -83,9 +83,6 @@ class TrainingConfig(object):
         self.learning_rate_decay_factor = 0.5
         self.num_epochs_per_decay = 8.0
 
-        # Learning rate when fine tuning the Inception v3 parameters.
-        self.train_inception_learning_rate = 0.0005
-
         # If not None, clip gradients to this value.
         self.clip_gradients = 5.0
 

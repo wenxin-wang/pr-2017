@@ -27,12 +27,8 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.flags.DEFINE_string("input_file_pattern", "",
                        "File pattern of sharded TFRecord input files.")
-tf.flags.DEFINE_string("inception_checkpoint_file", "",
-                       "Path to a pretrained inception_v3 model.")
 tf.flags.DEFINE_string("train_dir", "",
                        "Directory for saving and loading model checkpoints.")
-tf.flags.DEFINE_boolean("train_inception", False,
-                        "Whether to train inception submodel variables.")
 tf.flags.DEFINE_integer("number_of_steps", 1000000,
                         "Number of training steps.")
 tf.flags.DEFINE_integer("log_every_n_steps", 1,
@@ -47,7 +43,6 @@ def main(unused_argv):
 
     model_config = configuration.ModelConfig()
     model_config.input_file_pattern = FLAGS.input_file_pattern
-    model_config.inception_checkpoint_file = FLAGS.inception_checkpoint_file
     training_config = configuration.TrainingConfig()
 
     # Create training directory.
@@ -61,31 +56,27 @@ def main(unused_argv):
     with g.as_default():
         # Build the model.
         model = show_and_tell_model.ShowAndTellModel(
-            model_config, mode="train", train_inception=FLAGS.train_inception)
+            model_config, mode="train")
         model.build()
 
         # Set up the learning rate.
         learning_rate_decay_fn = None
-        if FLAGS.train_inception:
-            learning_rate = tf.constant(
-                training_config.train_inception_learning_rate)
-        else:
-            learning_rate = tf.constant(training_config.initial_learning_rate)
-            if training_config.learning_rate_decay_factor > 0:
-                num_batches_per_epoch = (training_config.num_examples_per_epoch
-                                         / model_config.batch_size)
-                decay_steps = int(num_batches_per_epoch *
-                                  training_config.num_epochs_per_decay)
+        learning_rate = tf.constant(training_config.initial_learning_rate)
+        if training_config.learning_rate_decay_factor > 0:
+            num_batches_per_epoch = (training_config.num_examples_per_epoch
+                                     / model_config.batch_size)
+            decay_steps = int(num_batches_per_epoch *
+                              training_config.num_epochs_per_decay)
 
-                def _learning_rate_decay_fn(learning_rate, global_step):
-                    return tf.train.exponential_decay(
-                        learning_rate,
-                        global_step,
-                        decay_steps=decay_steps,
-                        decay_rate=training_config.learning_rate_decay_factor,
-                        staircase=True)
+            def _learning_rate_decay_fn(learning_rate, global_step):
+                return tf.train.exponential_decay(
+                    learning_rate,
+                    global_step,
+                    decay_steps=decay_steps,
+                    decay_rate=training_config.learning_rate_decay_factor,
+                    staircase=True)
 
-                learning_rate_decay_fn = _learning_rate_decay_fn
+            learning_rate_decay_fn = _learning_rate_decay_fn
 
         # Set up the training ops.
         train_op = tf.contrib.layers.optimize_loss(
