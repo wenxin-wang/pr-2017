@@ -1,10 +1,11 @@
 import sys
 from pathlib import Path
 
+
 def main():
     ifname = sys.argv[1]
     _id = int(sys.argv[2])
-    p = Path(ifname) 
+    p = Path(ifname)
     ofname = p.with_name(p.stem + '-upload' + p.suffix)
     with open(ifname) as inf, open(ofname, 'w') as outf:
         met = False
@@ -20,6 +21,8 @@ def main():
                     outf.write("\n")
                     print("%d %s" % (_id, line))
                     met = True
+                    _id += 1
+
 
 if __name__ == "__main__":
     main()
