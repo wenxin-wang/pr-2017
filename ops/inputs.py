@@ -21,21 +21,17 @@ from __future__ import print_function
 import tensorflow as tf
 
 
-def parse_sequence_example(serialized):
-    dim_ft = "image/dims"
+def parse_sequence_example(serialized, ft_len, ft_shape):
     data_ft = "image/data"
     cap_ft = "image/caption_ids"
     context, _ = tf.parse_single_sequence_example(
         serialized,
         context_features={
-            dim_ft: tf.VarLenFeature(dtype=tf.int64),
-            data_ft: tf.VarLenFeature(dtype=tf.float32),
+            data_ft: tf.FixedLenFeature([ft_len], dtype=tf.float32),
             cap_ft: tf.VarLenFeature(dtype=tf.int64)
         })
 
-    data = tf.sparse_tensor_to_dense(context[data_ft])
-    dim = tf.sparse_tensor_to_dense(context[dim_ft])
-    image = tf.reshape(data, dim)
+    image = tf.reshape(context[data_ft], ft_shape)
     caption = tf.sparse_tensor_to_dense(context[cap_ft])
     return image, caption
 

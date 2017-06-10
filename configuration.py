@@ -32,6 +32,9 @@ class ModelConfig(object):
         # Image format ("jpeg" or "png").
         self.image_format = "jpeg"
 
+        self.ft_len = 4096
+        self.ft_shape = [4096]
+
         # Approximate number of values per input shard. Used to ensure
         # sufficient mixing between shards in training.
         self.values_per_input_shard = 2300
