@@ -21,8 +21,8 @@ from __future__ import print_function
 import math
 import os
 
-
 import tensorflow as tf
+import h5py
 
 import configuration
 import inference_wrapper
@@ -34,52 +34,54 @@ FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_string("checkpoint_path", "",
                        "Model checkpoint file or directory containing a "
                        "model checkpoint file.")
-tf.flags.DEFINE_string("vocab_file", "", "Text file containing the vocabulary.")
-tf.flags.DEFINE_string("input_files", "",
-                       "File pattern or comma-separated list of file patterns "
-                       "of image files.")
+tf.flags.DEFINE_string("vocab_file", "",
+                       "Text file containing the vocabulary.")
+tf.flags.DEFINE_string("input_file", "",
+                       "h5file of image files.")
+tf.flags.DEFINE_string("output_file", "",
+                       "one caption for each image")
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
 
 def main(_):
-  # Build the inference graph.
-  g = tf.Graph()
-  with g.as_default():
-    model = inference_wrapper.InferenceWrapper()
-    restore_fn = model.build_graph_from_config(configuration.ModelConfig(),
-                                               FLAGS.checkpoint_path)
-  g.finalize()
+    # Build the inference graph.
+    g = tf.Graph()
+    with g.as_default():
+        model = inference_wrapper.InferenceWrapper()
+        restore_fn = model.build_graph_from_config(configuration.ModelConfig(),
+                                                   FLAGS.checkpoint_path)
+    g.finalize()
 
-  # Create the vocabulary.
-  vocab = vocabulary.Vocabulary(FLAGS.vocab_file)
+    # Create the vocabulary.
+    vocab = vocabulary.Vocabulary(FLAGS.vocab_file)
 
-  filenames = []
-  for file_pattern in FLAGS.input_files.split(","):
-    filenames.extend(tf.gfile.Glob(file_pattern))
-  tf.logging.info("Running caption generation on %d files matching %s",
-                  len(filenames), FLAGS.input_files)
+    with tf.Session(graph=g) as sess:
+        # Load the model from checkpoint.
+        restore_fn(sess)
 
-  with tf.Session(graph=g) as sess:
-    # Load the model from checkpoint.
-    restore_fn(sess)
+        h5f = h5py.File(FLAGS.input_file)
+        tst_set = h5f['test_set']
+        tf.logging.info("Running caption generation on %d images in %s",
+                        tst_set.shape[0], FLAGS.input_file)
+        # Prepare the caption generator. Here we are implicitly using the
+        # default beam search parameters. See caption_generator.py for a
+        # description of the available beam search parameters.
+        generator = caption_generator.CaptionGenerator(model, vocab)
 
-    # Prepare the caption generator. Here we are implicitly using the default
-    # beam search parameters. See caption_generator.py for a description of the
-    # available beam search parameters.
-    generator = caption_generator.CaptionGenerator(model, vocab)
-
-    for filename in filenames:
-      with tf.gfile.GFile(filename, "r") as f:
-        image = f.read()
-      captions = generator.beam_search(sess, image)
-      print("Captions for image %s:" % os.path.basename(filename))
-      for i, caption in enumerate(captions):
-        # Ignore begin and end words.
-        sentence = [vocab.id_to_word(w) for w in caption.sentence[1:-1]]
-        sentence = " ".join(sentence)
-        print("  %d) %s (p=%f)" % (i, sentence, math.exp(caption.logprob)))
+        of = open(FLAGS.output_file, 'w')
+        for _id, image in enumerate(tst_set):
+            captions = generator.beam_search(sess, image)
+            for caption in captions:
+                # Ignore begin and end words.
+                sentence = [
+                    vocab.id_to_word(w) for w in caption.sentence[1:-1]
+                ]
+                sentence = " ".join(sentence)
+                print("%f@@ %s (p=%f)" % (math.exp(caption.logprob), sentence))
+        of.close()
+        h5f.close()
 
 
 if __name__ == "__main__":
-  tf.app.run()
+    tf.app.run()
