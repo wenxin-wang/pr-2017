@@ -38,8 +38,6 @@ tf.flags.DEFINE_string("vocab_file", "",
                        "Text file containing the vocabulary.")
 tf.flags.DEFINE_string("input_file", "",
                        "h5file of image files.")
-tf.flags.DEFINE_string("output_file", "",
-                       "one caption for each image")
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -69,17 +67,16 @@ def main(_):
         # description of the available beam search parameters.
         generator = caption_generator.CaptionGenerator(model, vocab)
 
-        of = open(FLAGS.output_file, 'w')
         for _id, image in enumerate(tst_set):
             captions = generator.beam_search(sess, image)
+            print(_id)
             for caption in captions:
                 # Ignore begin and end words.
                 sentence = [
                     vocab.id_to_word(w) for w in caption.sentence[1:-1]
                 ]
                 sentence = " ".join(sentence)
-                print("%f@@ %s (p=%f)" % (math.exp(caption.logprob), sentence))
-        of.close()
+                print("%f@@ %s" % (math.exp(caption.logprob), sentence))
         h5f.close()
 
 
