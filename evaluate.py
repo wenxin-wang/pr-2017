@@ -29,8 +29,8 @@ import time
 import numpy as np
 import tensorflow as tf
 
-from im2txt import configuration
-from im2txt import show_and_tell_model
+import configuration
+import show_and_tell_model
 
 FLAGS = tf.flags.FLAGS
 
