@@ -78,9 +78,7 @@ def _float_feature(value):
     return tf.train.Feature(float_list=tf.train.FloatList(value=value))
 
 
-def _to_sequence_example(image, caption, vocab, ndarray_to_1):
-    if ndarray_to_1:
-        image = ndarray_to_1(image)
+def _to_sequence_example(image, caption, vocab):
     context = tf.train.Features(feature={
         "image/data":
         _float_feature(image),
@@ -92,7 +90,7 @@ def _to_sequence_example(image, caption, vocab, ndarray_to_1):
 
 
 def _process_image_files(thread_index, ranges, name, images, img_captions,
-                         vocab, num_shards, ndarray_to_1):
+                         vocab, num_shards):
     # Each thread produces N shards where N = num_shards / num_threads. For
     # instance, if num_shards = 128, and num_threads = 2, then the first thread
     # would produce shards [0, 64).
@@ -125,8 +123,7 @@ def _process_image_files(thread_index, ranges, name, images, img_captions,
                 captions = [[]]
 
             for caption in captions:
-                sequence_example = _to_sequence_example(image, caption, vocab,
-                                                        ndarray_to_1)
+                sequence_example = _to_sequence_example(image, caption, vocab)
                 if sequence_example is None:
                     continue
                 writer.write(sequence_example.SerializeToString())
@@ -149,8 +146,7 @@ def _process_image_files(thread_index, ranges, name, images, img_captions,
     sys.stdout.flush()
 
 
-def _process_dataset(name, images, img_captions, vocab, num_shards,
-                     ndarray_to_1):
+def _process_dataset(name, images, img_captions, vocab, num_shards):
     # Break the images into num_threads batches. Batch i is defined as
     # images[ranges[i][0]:ranges[i][1]].
     num_threads = min(num_shards, FLAGS.num_threads)
@@ -167,7 +163,7 @@ def _process_dataset(name, images, img_captions, vocab, num_shards,
     print("Launching %d threads for spacings: %s" % (num_threads, ranges))
     for thread_index in range(len(ranges)):
         args = (thread_index, ranges, name, images, img_captions, vocab,
-                num_shards, ndarray_to_1)
+                num_shards)
         t = threading.Thread(target=_process_image_files, args=args)
         t.start()
         threads.append(t)
@@ -235,19 +231,15 @@ def _read_captions(ifname):
     return caps
 
 
-def _process_nn_ft(trn_caps, val_caps, vocab, fname, ndarray_to_1=None):
+def _process_nn_ft(trn_caps, val_caps, vocab, fname):
     with h5py.File(fname, 'r') as h5f:
-        trn_set = h5f['train_set']
-        val_set = h5f['validation_set']
+        trn_set = h5f['train_set'][:]
+        trn_set = trn_set.reshape((len(trn_set), -1))
+        val_set = h5f['validation_set'][:]
+        val_set = val_set.reshape((len(val_set), -1))
 
-        _process_dataset("trn", trn_set, trn_caps, vocab, FLAGS.train_shards,
-                         ndarray_to_1)
-        _process_dataset("val", val_set, val_caps, vocab, FLAGS.val_shards,
-                         ndarray_to_1)
-
-
-def cnn_ft_to_1(d):
-    return d.transpose(2, 0, 1).reshape(-1)
+    _process_dataset("trn", trn_set, trn_caps, vocab, FLAGS.train_shards)
+    _process_dataset("val", val_set, val_caps, vocab, FLAGS.val_shards)
 
 
 def main(unused_argv):
@@ -261,16 +253,15 @@ def main(unused_argv):
     # Create vocabulary from the training captions.
     vocab = _create_vocab(trn_caps)
 
-    if FLAGS.ft1:
-        p = os.path.join(FLAGS.image_ft_dir, "image_vgg19_fc1_feature.h5")
+    fts = {
+        "image_vgg19_fc1_feature.h5": FLAGS.ft1,
+        "image_vgg19_fc2_feature.h5": FLAGS.ft2,
+        "image_vgg19_block5_pool_feature.h5": FLAGS.cnn
+    }
+    ps = [os.path.join(FLAGS.image_ft_dir, k)
+          for k, f in fts.items() if f]
+    for p in ps:
         _process_nn_ft(trn_caps, val_caps, vocab, p)
-    if FLAGS.ft2:
-        p = os.path.join(FLAGS.image_ft_dir, "image_vgg19_fc2_feature.h5")
-        _process_nn_ft(trn_caps, val_caps, vocab, p)
-    if FLAGS.cnn:
-        p = os.path.join(FLAGS.image_ft_dir,
-                         "image_vgg19_block5_pool_feature.h5")
-        _process_nn_ft(trn_caps, val_caps, vocab, p, cnn_ft_to_1)
 
 
 if __name__ == "__main__":
