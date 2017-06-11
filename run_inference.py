@@ -39,6 +39,8 @@ tf.flags.DEFINE_string("input_file", "",
                        "h5file of image files.")
 tf.flags.DEFINE_string("dataset", "test_set",
                        "dataset to use")
+tf.flags.DEFINE_integer("attend", 0,
+                                "Attend Model")
 
 
 tf.logging.set_verbosity(tf.logging.INFO)
@@ -48,8 +50,12 @@ def main(_):
     # Build the inference graph.
     g = tf.Graph()
     with g.as_default():
-        model = inference_wrapper.InferenceWrapper()
-        restore_fn = model.build_graph_from_config(configuration.ModelConfig(),
+        model = inference_wrapper.InferenceWrapper(FLAGS.attend)
+        if FLAGS.attend:
+            model_config = configuration.AttendModelConfig()
+        else:
+            model_config = configuration.ModelConfig()
+        restore_fn = model.build_graph_from_config(model_config,
                                                    FLAGS.checkpoint_path)
     g.finalize()
 
@@ -61,7 +67,8 @@ def main(_):
         restore_fn(sess)
 
         h5f = h5py.File(FLAGS.input_file)
-        images = h5f[FLAGS.dataset]
+        images = h5f[FLAGS.dataset][:]
+        images = images.reshape((len(images), -1))
         tf.logging.info("Running caption generation on %d images in %s",
                         images.shape[0], FLAGS.input_file)
         # Prepare the caption generator. Here we are implicitly using the

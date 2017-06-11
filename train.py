@@ -62,9 +62,9 @@ def main(unused_argv):
     with g.as_default():
         # Build the model.
         if FLAGS.attend:
-            model = ShowAndTellModel(model_config, mode="train")
-        else:
             model = ShowAttendAndTellModel(model_config, mode="train")
+        else:
+            model = ShowAndTellModel(model_config, mode="train")
         model.build()
 
         # Set up the training ops.

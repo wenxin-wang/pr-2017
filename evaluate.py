@@ -30,7 +30,8 @@ import numpy as np
 import tensorflow as tf
 
 import configuration
-import show_and_tell_model
+from show_and_tell_model import ShowAndTellModel
+from show_attend_and_tell_model import ShowAttendAndTellModel
 
 FLAGS = tf.flags.FLAGS
 
@@ -47,6 +48,9 @@ tf.flags.DEFINE_integer("num_eval_examples", 4811,
 
 tf.flags.DEFINE_integer("min_global_step", 1000,
                         "Minimum global step to run evaluation.")
+
+tf.flags.DEFINE_integer("attend", 0,
+                                "Attend Model")
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -160,9 +164,15 @@ def run():
     g = tf.Graph()
     with g.as_default():
         # Build the model for evaluation.
-        model_config = configuration.ModelConfig()
+        if FLAGS.attend:
+            model_config = configuration.AttendModelConfig()
+        else:
+            model_config = configuration.ModelConfig()
         model_config.input_file_pattern = FLAGS.input_file_pattern
-        model = show_and_tell_model.ShowAndTellModel(model_config, mode="eval")
+        if FLAGS.attend:
+            model = ShowAttendAndTellModel(model_config, mode="eval")
+        else:
+            model = ShowAndTellModel(model_config, mode="eval")
         model.build()
 
         # Create the Saver to restore model Variables.

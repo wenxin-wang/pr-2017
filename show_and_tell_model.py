@@ -213,12 +213,19 @@ class ShowAndTellModel(object):
                 tf.concat(axis=1, values=initial_state, name="initial_state")
 
                 # Placeholder for feeding a batch of concatenated states.
+                if self.config.use_gru:
+                    state_len = lstm_cell.state_size
+                else:
+                    state_len = sum(lstm_cell.state_size)
                 state_feed = tf.placeholder(
                     dtype=tf.float32,
-                    shape=[None, sum(lstm_cell.state_size)],
+                    shape=[None, state_len],
                     name="state_feed")
-                state_tuple = tf.split(
-                    value=state_feed, num_or_size_splits=2, axis=1)
+                if self.config.use_gru:
+                    state_tuple = state_feed
+                else:
+                    state_tuple = tf.split(
+                        value=state_feed, num_or_size_splits=2, axis=1)
 
                 # Run a single LSTM step.
                 lstm_outputs, state_tuple = lstm_cell(

@@ -18,19 +18,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import show_and_tell_model
+from show_and_tell_model import ShowAndTellModel
+from show_attend_and_tell_model import ShowAttendAndTellModel
 from inference_utils import inference_wrapper_base
 
 
 class InferenceWrapper(inference_wrapper_base.InferenceWrapperBase):
     """Model wrapper class for performing inference with a ShowAndTellModel."""
 
-    def __init__(self):
+    def __init__(self, attend):
         super(InferenceWrapper, self).__init__()
+        self._attend = attend
 
     def build_model(self, model_config):
-        model = show_and_tell_model.ShowAndTellModel(
-            model_config, mode="inference")
+        if self._attend:
+            model = ShowAttendAndTellModel(model_config, mode="inference")
+        else:
+            model = ShowAndTellModel(model_config, mode="inference")
         model.build()
         return model
 
