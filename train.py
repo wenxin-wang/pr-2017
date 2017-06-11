@@ -29,7 +29,7 @@ tf.flags.DEFINE_string("input_file_pattern", "",
                        "File pattern of sharded TFRecord input files.")
 tf.flags.DEFINE_string("train_dir", "",
                        "Directory for saving and loading model checkpoints.")
-tf.flags.DEFINE_integer("number_of_steps", 1000000,
+tf.flags.DEFINE_integer("number_of_steps", 1000,
                         "Number of training steps.")
 tf.flags.DEFINE_integer("log_every_n_steps", 1,
                         "Frequency at which loss and global step are logged.")
@@ -59,31 +59,16 @@ def main(unused_argv):
             model_config, mode="train")
         model.build()
 
-        # Set up the learning rate.
-        learning_rate_decay_fn = None
-        learning_rate = tf.constant(training_config.initial_learning_rate)
-        if training_config.learning_rate_decay_factor > 0:
-            num_batches_per_epoch = (training_config.num_examples_per_epoch
-                                     / model_config.batch_size)
-            decay_steps = int(num_batches_per_epoch *
-                              training_config.num_epochs_per_decay)
-
-            def _learning_rate_decay_fn(learning_rate, global_step):
-                return tf.train.exponential_decay(
-                    learning_rate,
-                    global_step,
-                    decay_steps=decay_steps,
-                    decay_rate=training_config.learning_rate_decay_factor,
-                    staircase=True)
-
-            learning_rate_decay_fn = _learning_rate_decay_fn
-
         # Set up the training ops.
         train_op = tf.contrib.layers.optimize_loss(
             loss=model.total_loss,
             global_step=model.global_step,
             learning_rate=None,
-            optimizer=tf.train.AdamOptimizer())
+            optimizer=tf.train.AdamOptimizer(
+                learning_rate=0.001,
+                beta1=0.9,
+                beta2=0.999,
+                epsilon=1e-09))
 
         # Set up the Saver for saving and restoring model checkpoints.
         saver = tf.train.Saver(
@@ -98,7 +83,8 @@ def main(unused_argv):
         global_step=model.global_step,
         number_of_steps=FLAGS.number_of_steps,
         init_fn=model.init_fn,
-        saver=saver)
+        saver=saver,
+        save_interval_secs=300)
 
 
 if __name__ == "__main__":

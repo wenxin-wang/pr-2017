@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from nltk.tokenize.moses import MosesTokenizer
+import jieba
 from collections import Counter, defaultdict
 
 import numpy as np
@@ -39,6 +40,8 @@ tf.flags.DEFINE_string("end_word", "</S>",
                        "Special word added to the end of each sentence.")
 tf.flags.DEFINE_string("unknown_word", "<UNK>",
                        "Special word meaning 'unknown'.")
+tf.flags.DEFINE_integer("cut_words", 0,
+                        "Cut by words")
 tf.flags.DEFINE_integer(
     "min_word_count", 4,
     "The minimum number of occurrences of each word in the "
@@ -211,7 +214,15 @@ def _process_caption(caption):
     A list of strings; the tokenized caption.
   """
     tokenized_caption = [FLAGS.start_word]
-    tokenized_caption.extend(tk.tokenize(caption.lower()))
+    caption = caption.lower()
+    if FLAGS.cut_words:
+        tokens = [
+            " ".join(tk.tokenize(cap))
+            for cap in jieba.cut(caption)
+        ]
+    else:
+        tokens = tk.tokenize(caption)
+    tokenized_caption.extend(tokens)
     tokenized_caption.append(FLAGS.end_word)
     return tokenized_caption
 

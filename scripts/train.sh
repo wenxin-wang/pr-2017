@@ -1,8 +1,17 @@
-DATA_DIR=../data/ft1-c-2
+DATA_DIR=../data/cnn-c-3
 MODEL_DIR=$DATA_DIR/model
 RECORDS_DIR=$DATA_DIR/records
 
 python train.py \
-  --input_file_pattern="${RECORDS_DIR}/trn-?????-of-00016" \
+  --input_file_pattern="${RECORDS_DIR}/trn-?????-of-00128" \
   --train_dir="${MODEL_DIR}/train" \
-  --number_of_steps=1000000
+  --number_of_steps=4000 \
+
+# DATA_DIR=../data/ft1-w-4
+# MODEL_DIR=$DATA_DIR/model
+# RECORDS_DIR=$DATA_DIR/records
+# 
+# python train.py \
+#   --input_file_pattern="${RECORDS_DIR}/trn-?????-of-00016" \
+#   --train_dir="${MODEL_DIR}/train" \
+#   --number_of_steps=1000 \

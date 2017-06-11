@@ -31,13 +31,14 @@ class ModelConfig(object):
         # Must be provided in training and evaluation modes.
         self.input_file_pattern = None
 
-        #self.ft_len = 4096
-        self.ft_len = 49 * 512
+        self.ft_len = 4096
+        # self.ft_len = 49 * 512
 
         # Approximate number of values per input shard. Used to ensure
         # sufficient mixing between shards in training.
-        # self.values_per_input_shard = 2300
-        self.values_per_input_shard = 400
+        self.values_per_input_shard = 2300
+        # self.values_per_input_shard = 400
+
         # Minimum number of shards to keep in the input queue.
         self.input_queue_capacity_factor = 2
         # Number of threads for prefetching SequenceExample protos.
@@ -54,8 +55,8 @@ class ModelConfig(object):
         # Number of threads for image preprocessing. Should be a multiple of 2.
         self.num_preprocess_threads = 4
 
-        # self.attention = None
-        self.attention = tf.contrib.rnn.AttentionCellWrapper
+        self.attention = None
+        # self.attention = tf.contrib.rnn.AttentionCellWrapper
         self.attn_size = 512  # a
         self.attn_length = 49  # number of a
 
@@ -66,8 +67,8 @@ class ModelConfig(object):
         self.initializer_scale = 0.08
 
         # LSTM input and output dimensionality, respectively.
-        self.embedding_size = 4096
-        self.num_lstm_units = 1024
+        self.embedding_size = self.ft_len
+        self.num_lstm_units = 512
 
         # If < 1.0, the dropout keep probability applied to LSTM variables.
         self.lstm_dropout_keep_prob = 0.7

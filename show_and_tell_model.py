@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from tensorflow.python.ops import array_ops
 
 from ops import inputs as input_ops
 
@@ -104,7 +105,7 @@ class ShowAndTellModel(object):
             # In inference mode, images and inputs are fed via placeholders.
             image_feed = tf.placeholder(
                 dtype=tf.float32,
-                shape=self.config.ft_shape,
+                shape=[self.config.ft_len],
                 name="image_feed")
             input_feed = tf.placeholder(
                 dtype=tf.int64,
@@ -135,8 +136,7 @@ class ShowAndTellModel(object):
             for thread_id in range(self.config.num_preprocess_threads):
                 serialized_sequence_example = input_queue.dequeue()
                 image, caption = input_ops.parse_sequence_example(
-                    serialized_sequence_example, self.config.ft_len,
-                    self.config.ft_shape)
+                    serialized_sequence_example, self.config.ft_len)
                 images_and_captions.append([image, caption])
 
             # Batch inputs.
@@ -194,6 +194,12 @@ class ShowAndTellModel(object):
         # outputs new_c * sigmoid(o).
         lstm_cell = tf.contrib.rnn.BasicLSTMCell(
             num_units=self.config.num_lstm_units, state_is_tuple=True)
+        if self.config.attention:
+            lstm_cell = self.config.attention(
+                lstm_cell,
+                attn_length=self.config.attn_length,
+                attn_size=self.config.attn_size,
+                state_is_tuple=True)
         if self.mode == "train":
             lstm_cell = tf.contrib.rnn.DropoutWrapper(
                 lstm_cell,
@@ -203,8 +209,9 @@ class ShowAndTellModel(object):
         with tf.variable_scope(
                 "lstm", initializer=self.initializer) as lstm_scope:
             # Feed the image embeddings to set the initial LSTM state.
+            batch_size = self.image_embeddings.get_shape()[0]
             zero_state = lstm_cell.zero_state(
-                batch_size=self.image_embeddings.get_shape()[0],
+                batch_size=batch_size,
                 dtype=tf.float32)
             _, initial_state = lstm_cell(self.image_embeddings, zero_state)
 

@@ -60,6 +60,7 @@ def main(_):
 
         h5f = h5py.File(FLAGS.input_file)
         tst_set = h5f['test_set']
+        # tst_set = h5f['train_set']
         tf.logging.info("Running caption generation on %d images in %s",
                         tst_set.shape[0], FLAGS.input_file)
         # Prepare the caption generator. Here we are implicitly using the
