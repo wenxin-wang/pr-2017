@@ -28,7 +28,7 @@ class Vocabulary(object):
         tf.logging.info("Initializing vocabulary from file: %s", vocab_file)
 
         with tf.gfile.GFile(vocab_file, mode="r") as f:
-            reverse_vocab = [line.split()[0] for line in f.readlines()]
+            reverse_vocab = [line.rsplit(' ', 1)[0] for line in f.readlines()]
         vocab = {x: i for i, x in enumerate(reverse_vocab)}
         assert start_word in vocab
         assert end_word in vocab

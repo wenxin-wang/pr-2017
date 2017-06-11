@@ -104,7 +104,7 @@ class ShowAndTellModel(object):
             # In inference mode, images and inputs are fed via placeholders.
             image_feed = tf.placeholder(
                 dtype=tf.float32,
-                shape=self.config.ft_shape,
+                shape=[self.config.ft_len],
                 name="image_feed")
             input_feed = tf.placeholder(
                 dtype=tf.int64,
@@ -135,8 +135,7 @@ class ShowAndTellModel(object):
             for thread_id in range(self.config.num_preprocess_threads):
                 serialized_sequence_example = input_queue.dequeue()
                 image, caption = input_ops.parse_sequence_example(
-                    serialized_sequence_example, self.config.ft_len,
-                    self.config.ft_shape)
+                    serialized_sequence_example, self.config.ft_len)
                 images_and_captions.append([image, caption])
 
             # Batch inputs.

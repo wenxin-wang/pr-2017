@@ -30,7 +30,6 @@ class ModelConfig(object):
         self.input_file_pattern = None
 
         self.ft_len = 4096
-        self.ft_shape = [4096]
 
         # Approximate number of values per input shard. Used to ensure
         # sufficient mixing between shards in training.
@@ -38,14 +37,15 @@ class ModelConfig(object):
         # Minimum number of shards to keep in the input queue.
         self.input_queue_capacity_factor = 2
         # Number of threads for prefetching SequenceExample protos.
-        self.num_input_reader_threads = 1
+        self.num_input_reader_threads = 2
 
-        # Number of unique words in the vocab (plus 1, for <UNK>).
-        # The default value is larger than the expected actual vocab size to allow
-        # for differences between tokenizer versions used in preprocessing. There is
-        # no harm in using a value greater than the actual vocab size, but using a
-        # value less than the actual vocab size will result in an error.
-        self.vocab_size = 3000
+        # Number of unique words in the vocab (plus 1, for <UNK>). The default
+        # value is larger than the expected actual vocab size to allow for
+        # differences between tokenizer versions used in preprocessing. There
+        # is no harm in using a value greater than the actual vocab size, but
+        # using a value less than the actual vocab size will result in an
+        # error.
+        self.vocab_size = 4000
 
         # Number of threads for image preprocessing. Should be a multiple of 2.
         self.num_preprocess_threads = 4
@@ -58,7 +58,7 @@ class ModelConfig(object):
 
         # LSTM input and output dimensionality, respectively.
         self.embedding_size = self.ft_len
-        self.num_lstm_units = self.ft_len
+        self.num_lstm_units = 512
 
         # If < 1.0, the dropout keep probability applied to LSTM variables.
         self.lstm_dropout_keep_prob = 0.7

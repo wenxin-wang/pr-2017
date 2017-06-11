@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import os
 
 import tensorflow as tf
 import h5py
@@ -38,6 +37,9 @@ tf.flags.DEFINE_string("vocab_file", "",
                        "Text file containing the vocabulary.")
 tf.flags.DEFINE_string("input_file", "",
                        "h5file of image files.")
+tf.flags.DEFINE_string("dataset", "test_set",
+                       "dataset to use")
+
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -59,15 +61,15 @@ def main(_):
         restore_fn(sess)
 
         h5f = h5py.File(FLAGS.input_file)
-        tst_set = h5f['test_set']
+        images = h5f[FLAGS.dataset]
         tf.logging.info("Running caption generation on %d images in %s",
-                        tst_set.shape[0], FLAGS.input_file)
+                        images.shape[0], FLAGS.input_file)
         # Prepare the caption generator. Here we are implicitly using the
         # default beam search parameters. See caption_generator.py for a
         # description of the available beam search parameters.
         generator = caption_generator.CaptionGenerator(model, vocab)
 
-        for _id, image in enumerate(tst_set):
+        for _id, image in enumerate(images):
             captions = generator.beam_search(sess, image)
             print(_id)
             for caption in captions:
