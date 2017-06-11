@@ -63,6 +63,8 @@ class ModelConfig(object):
         # If < 1.0, the dropout keep probability applied to LSTM variables.
         self.lstm_dropout_keep_prob = 0.7
 
+        self.use_gru = False
+
 
 class TrainingConfig(object):
     """Wrapper class for training hyperparameters."""
