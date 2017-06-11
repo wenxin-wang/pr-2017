@@ -25,7 +25,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from ops import inputs as input_ops
-from AttentionLSTMCell import AttentionLSTMCell
+from tensorflow.python.ops import array_ops
 
 
 class ShowAttendAndTellModel(object):
@@ -186,23 +186,39 @@ class ShowAttendAndTellModel(object):
         # This LSTM cell has biases and outputs tanh(new_c) * sigmoid(o), but
         # the modified LSTM in the "Show and Tell" paper has no biases and
         # outputs new_c * sigmoid(o).
-        lstm_cell = AttentionLSTMCell(
-            num_units=self.config.num_lstm_units,
-            num_attns=self.config.attn_length,
-            attn_size=self.config.attn_size)
-
+        if self.config.use_gru:
+            cell_type = tf.contrib.rnn.GRUCell
+        else:
+            cell_type = tf.contrib.rnn.BasicLSTMCell
+        lstm_cell = cell_type(num_units=self.config.num_lstm_units)
+        lstm_cell = tf.contrib.rnn.AttentionCellWrapper(
+            lstm_cell,
+            attn_length=self.config.attn_length,
+            attn_size=self.config.attn_size,
+            state_is_tuple=True
+        )
         if self.mode == "train":
             lstm_cell = tf.contrib.rnn.DropoutWrapper(
                 lstm_cell,
                 input_keep_prob=self.config.lstm_dropout_keep_prob,
                 output_keep_prob=self.config.lstm_dropout_keep_prob)
 
-        initial_state = lstm_cell.zero_state(
-            batch_size=self.images.get_shape()[0], dtype=tf.float32)[0]
+        zero_lstm_state = lstm_cell.zero_state(
+            batch_size=self.config.batch_size,
+            dtype=tf.float32)[0]
+        avg_attn = tf.reduce_mean(
+            tf.reshape(
+                self.image_embeddings,
+                [-1, self.config.attn_length, self.config.attn_size]),
+            1)
+        initial_state = (zero_lstm_state, avg_attn, self.image_embeddings)
 
-        with tf.variable_scope(
-                "lstm", initializer=self.initializer) as lstm_scope:
-            if self.mode == "inference":
+        if self.mode == "inference":
+            with tf.variable_scope(
+                    "lstm", initializer=self.initializer) as lstm_scope:
+
+                lstm_scope.reuse_variables()
+
                 # In inference mode, use concatenated states for convenient
                 # feeding and fetching.
                 tf.concat(axis=1, values=initial_state, name="initial_state")
@@ -213,13 +229,7 @@ class ShowAttendAndTellModel(object):
                     shape=[None, sum(lstm_cell.state_size)],
                     name="state_feed")
                 state_tuple = tf.split(
-                    value=state_feed,
-                    num_or_size_splits=[
-                        self.config.num_lstm_units,
-                        self.config.num_lstm_units,
-                        self.config.attn_size * self.config.attn_length,
-                    ],
-                    axis=1)
+                    value=state_feed, num_or_size_splits=2, axis=1)
 
                 # Run a single LSTM step.
                 lstm_outputs, state_tuple = lstm_cell(
@@ -228,16 +238,15 @@ class ShowAttendAndTellModel(object):
 
                 # Concatentate the resulting state.
                 tf.concat(axis=1, values=state_tuple, name="state")
-            else:
-                # Run the batch of sequence embeddings through the LSTM.
-                sequence_length = tf.reduce_sum(self.input_mask, 1)
-                lstm_outputs, _ = tf.nn.dynamic_rnn(
-                    cell=lstm_cell,
-                    inputs=self.seq_embeddings,
-                    sequence_length=sequence_length,
-                    initial_state=initial_state,
-                    dtype=tf.float32,
-                    scope=lstm_scope)
+        else:
+            # Run the batch of sequence embeddings through the LSTM.
+            sequence_length = tf.reduce_sum(self.input_mask, 1)
+            lstm_outputs, _ = tf.nn.dynamic_rnn(
+                cell=lstm_cell,
+                inputs=self.seq_embeddings,
+                sequence_length=sequence_length,
+                initial_state=initial_state,
+                dtype=tf.float32)
 
         # Stack batches vertically.
         lstm_outputs = tf.reshape(lstm_outputs, [-1, lstm_cell.output_size])
