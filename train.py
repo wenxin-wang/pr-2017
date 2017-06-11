@@ -21,7 +21,8 @@ from __future__ import print_function
 import tensorflow as tf
 
 import configuration
-import show_and_tell_model
+from show_and_tell_model import ShowAndTellModel
+from show_attend_and_tell_model import ShowAttendAndTellModel
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -33,6 +34,8 @@ tf.flags.DEFINE_integer("number_of_steps", 1000,
                         "Number of training steps.")
 tf.flags.DEFINE_integer("log_every_n_steps", 1,
                         "Frequency at which loss and global step are logged.")
+tf.flags.DEFINE_integer("attend", 0,
+                        "Attend Model")
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
@@ -41,7 +44,10 @@ def main(unused_argv):
     assert FLAGS.input_file_pattern, "--input_file_pattern is required"
     assert FLAGS.train_dir, "--train_dir is required"
 
-    model_config = configuration.ModelConfig()
+    if FLAGS.attend:
+        model_config = configuration.AttendModelConfig()
+    else:
+        model_config = configuration.ModelConfig()
     model_config.input_file_pattern = FLAGS.input_file_pattern
     training_config = configuration.TrainingConfig()
 
@@ -55,8 +61,10 @@ def main(unused_argv):
     g = tf.Graph()
     with g.as_default():
         # Build the model.
-        model = show_and_tell_model.ShowAndTellModel(
-            model_config, mode="train")
+        if FLAGS.attend:
+            model = ShowAndTellModel(model_config, mode="train")
+        else:
+            model = ShowAttendAndTellModel(model_config, mode="train")
         model.build()
 
         # Set up the training ops.

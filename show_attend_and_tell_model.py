@@ -25,9 +25,10 @@ from __future__ import print_function
 import tensorflow as tf
 
 from ops import inputs as input_ops
+from tensorflow.python.ops import array_ops
 
 
-class ShowAndTellModel(object):
+class ShowAttendAndTellModel(object):
     """Image-to-text implementation based on http://arxiv.org/abs/1411.4555.
 
     "Show and Tell: A Neural Image Caption Generator"
@@ -66,7 +67,8 @@ class ShowAndTellModel(object):
         # An int32 0/1 Tensor with shape [batch_size, padded_length].
         self.input_mask = None
 
-        # A float32 Tensor with shape [batch_size, padded_length, embedding_size].
+        # A float32 Tensor with shape [batch_size, padded_length,
+        # embedding_size].
         self.seq_embeddings = None
 
         # A float32 scalar Tensor; the total loss for the trainer to optimize.
@@ -172,7 +174,6 @@ class ShowAndTellModel(object):
         """Builds the model.
 
     Inputs:
-      self.images
       self.seq_embeddings
       self.target_seqs (training and eval only)
       self.input_mask (training and eval only)
@@ -190,24 +191,34 @@ class ShowAndTellModel(object):
         else:
             cell_type = tf.contrib.rnn.BasicLSTMCell
         lstm_cell = cell_type(num_units=self.config.num_lstm_units)
+        lstm_cell = tf.contrib.rnn.AttentionCellWrapper(
+            lstm_cell,
+            attn_length=self.config.attn_length,
+            attn_size=self.config.attn_size,
+            state_is_tuple=True
+        )
         if self.mode == "train":
             lstm_cell = tf.contrib.rnn.DropoutWrapper(
                 lstm_cell,
                 input_keep_prob=self.config.lstm_dropout_keep_prob,
                 output_keep_prob=self.config.lstm_dropout_keep_prob)
 
-        with tf.variable_scope(
-                "lstm", initializer=self.initializer) as lstm_scope:
-            # Feed the image embeddings to set the initial LSTM state.
-            zero_state = lstm_cell.zero_state(
-                batch_size=self.images.get_shape()[0],
-                dtype=tf.float32)
-            _, initial_state = lstm_cell(self.images, zero_state)
+        zero_lstm_state = lstm_cell.zero_state(
+            batch_size=self.config.batch_size,
+            dtype=tf.float32)[0]
+        avg_attn = tf.reduce_mean(
+            tf.reshape(
+                self.image_embeddings,
+                [-1, self.config.attn_length, self.config.attn_size]),
+            1)
+        initial_state = (zero_lstm_state, avg_attn, self.image_embeddings)
 
-            # Allow the LSTM variables to be reused.
-            lstm_scope.reuse_variables()
+        if self.mode == "inference":
+            with tf.variable_scope(
+                    "lstm", initializer=self.initializer) as lstm_scope:
 
-            if self.mode == "inference":
+                lstm_scope.reuse_variables()
+
                 # In inference mode, use concatenated states for convenient
                 # feeding and fetching.
                 tf.concat(axis=1, values=initial_state, name="initial_state")
@@ -227,16 +238,15 @@ class ShowAndTellModel(object):
 
                 # Concatentate the resulting state.
                 tf.concat(axis=1, values=state_tuple, name="state")
-            else:
-                # Run the batch of sequence embeddings through the LSTM.
-                sequence_length = tf.reduce_sum(self.input_mask, 1)
-                lstm_outputs, _ = tf.nn.dynamic_rnn(
-                    cell=lstm_cell,
-                    inputs=self.seq_embeddings,
-                    sequence_length=sequence_length,
-                    initial_state=initial_state,
-                    dtype=tf.float32,
-                    scope=lstm_scope)
+        else:
+            # Run the batch of sequence embeddings through the LSTM.
+            sequence_length = tf.reduce_sum(self.input_mask, 1)
+            lstm_outputs, _ = tf.nn.dynamic_rnn(
+                cell=lstm_cell,
+                inputs=self.seq_embeddings,
+                sequence_length=sequence_length,
+                initial_state=initial_state,
+                dtype=tf.float32)
 
         # Stack batches vertically.
         lstm_outputs = tf.reshape(lstm_outputs, [-1, lstm_cell.output_size])
