@@ -14,12 +14,14 @@ import threading
 
 import tensorflow as tf
 
-tf.flags.DEFINE_string("image_ft_file", "../data/image_vgg19_fc1_feature.h5",
-                       "Training image directory.")
+tf.flags.DEFINE_string("image_ft_dir", "../data", "Training image directory.")
 tf.flags.DEFINE_string("train_captions_file", "../data/train.txt",
                        "Training captions file.")
 tf.flags.DEFINE_string("val_captions_file", "../data/valid.txt",
                        "Validation captions file.")
+tf.flags.DEFINE_integer("ft1", 1, "Process ft1")
+tf.flags.DEFINE_integer("ft2", 0, "Process ft2")
+tf.flags.DEFINE_integer("cnn", 0, "Process cnn")
 
 tf.flags.DEFINE_string("output_dir", "../data/records",
                        "Output data directory.")
@@ -76,9 +78,12 @@ def _float_feature(value):
     return tf.train.Feature(float_list=tf.train.FloatList(value=value))
 
 
-def _to_sequence_example(image, caption, vocab):
+def _to_sequence_example(image, caption, vocab, ndarray_to_1):
+    if ndarray_to_1:
+        image = ndarray_to_1(image)
     context = tf.train.Features(feature={
-        "image/data": _float_feature(image[:]),
+        "image/data":
+        _float_feature(image),
         "image/caption_ids":
         _int64_feature([vocab[word] for word in caption]),
     })
@@ -87,7 +92,7 @@ def _to_sequence_example(image, caption, vocab):
 
 
 def _process_image_files(thread_index, ranges, name, images, img_captions,
-                         vocab, num_shards):
+                         vocab, num_shards, ndarray_to_1):
     # Each thread produces N shards where N = num_shards / num_threads. For
     # instance, if num_shards = 128, and num_threads = 2, then the first thread
     # would produce shards [0, 64).
@@ -120,7 +125,8 @@ def _process_image_files(thread_index, ranges, name, images, img_captions,
                 captions = [[]]
 
             for caption in captions:
-                sequence_example = _to_sequence_example(image, caption, vocab)
+                sequence_example = _to_sequence_example(image, caption, vocab,
+                                                        ndarray_to_1)
                 if sequence_example is None:
                     continue
                 writer.write(sequence_example.SerializeToString())
@@ -143,7 +149,8 @@ def _process_image_files(thread_index, ranges, name, images, img_captions,
     sys.stdout.flush()
 
 
-def _process_dataset(name, images, img_captions, vocab, num_shards):
+def _process_dataset(name, images, img_captions, vocab, num_shards,
+                     ndarray_to_1):
     # Break the images into num_threads batches. Batch i is defined as
     # images[ranges[i][0]:ranges[i][1]].
     num_threads = min(num_shards, FLAGS.num_threads)
@@ -160,7 +167,7 @@ def _process_dataset(name, images, img_captions, vocab, num_shards):
     print("Launching %d threads for spacings: %s" % (num_threads, ranges))
     for thread_index in range(len(ranges)):
         args = (thread_index, ranges, name, images, img_captions, vocab,
-                num_shards)
+                num_shards, ndarray_to_1)
         t = threading.Thread(target=_process_image_files, args=args)
         t.start()
         threads.append(t)
@@ -228,13 +235,19 @@ def _read_captions(ifname):
     return caps
 
 
-def _read_ft_file(ifname):
-    h5f = h5py.File(ifname, 'r')
-    trn_set = h5f['train_set'][:, :]
-    val_set = h5f['validation_set'][:, :]
-    tst_set = h5f['test_set'][:, :]
-    h5f.close()
-    return trn_set, val_set, tst_set
+def _process_nn_ft(trn_caps, val_caps, vocab, fname, ndarray_to_1=None):
+    with h5py.File(fname, 'r') as h5f:
+        trn_set = h5f['train_set']
+        val_set = h5f['validation_set']
+
+        _process_dataset("trn", trn_set, trn_caps, vocab, FLAGS.train_shards,
+                         ndarray_to_1)
+        _process_dataset("val", val_set, val_caps, vocab, FLAGS.val_shards,
+                         ndarray_to_1)
+
+
+def cnn_ft_to_1(d):
+    return d.transpose(2, 0, 1).reshape(-1)
 
 
 def main(unused_argv):
@@ -248,11 +261,16 @@ def main(unused_argv):
     # Create vocabulary from the training captions.
     vocab = _create_vocab(trn_caps)
 
-    trn_set, val_set, tst_set = _read_ft_file(FLAGS.image_ft_file)
-
-    _process_dataset("trn", trn_set, trn_caps, vocab, FLAGS.train_shards)
-    _process_dataset("val", val_set, val_caps, vocab, FLAGS.val_shards)
-    # _process_dataset("tst", tst_set, None, vocab, FLAGS.test_shards)
+    if FLAGS.ft1:
+        p = os.path.join(FLAGS.image_ft_dir, "image_vgg19_fc1_feature.h5")
+        _process_nn_ft(trn_caps, val_caps, vocab, p)
+    if FLAGS.ft2:
+        p = os.path.join(FLAGS.image_ft_dir, "image_vgg19_fc2_feature.h5")
+        _process_nn_ft(trn_caps, val_caps, vocab, p)
+    if FLAGS.cnn:
+        p = os.path.join(FLAGS.image_ft_dir,
+                         "image_vgg19_block5_pool_feature.h5")
+        _process_nn_ft(trn_caps, val_caps, vocab, p, cnn_ft_to_1)
 
 
 if __name__ == "__main__":
